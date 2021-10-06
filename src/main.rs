@@ -36,22 +36,26 @@ struct AppState {
     legal: Vec<(u8, u8)>, // When clicking on a piece, it saves the legal moves in this vec to display the indicators on the board
     previous_click: Option<(u8, u8)>, // The previous square clicked by the player
     promoting: bool, // If the player is currently promoting a piece (makes a small window pop up for the player to choose)
-    pending_promotion_move: PendingMove
+    pending_promotion_move: PendingMove,
+    deaths: HashMap<Colour, Vec<PieceType>>
 }
 
 impl AppState {
     /// Initialise new application, i.e. initialise new game and load resources.
     fn new(ctx: &mut Context) -> GameResult<AppState> {
 
-        let state = AppState {
+        let mut state = AppState {
             sprites: AppState::load_sprites(ctx),
             game: Game::new(),
             legal: vec![],
             previous_click: None,
             promoting: false,
-            pending_promotion_move: PendingMove{_from: "".to_string(), _to: "".to_string()}
+            pending_promotion_move: PendingMove{_from: "".to_string(), _to: "".to_string()},
+            deaths: HashMap::new()
         };
 
+        state.deaths.insert(Colour::Black, vec![]);
+        state.deaths.insert(Colour::White, vec![]);
         Ok(state)
     }
 
@@ -102,8 +106,8 @@ impl event::EventHandler<GameError> for AppState {
                 graphics::TextFragment::from(
                     match self.game.get_game_state() {
                         GameState::InProgress => format!("{}'s turn!", if current_colour == Colour::Black {"Haskeller"} else {"Rustacean"}),
-                        GameState::Check => "It's Check :O".to_string(),
-                        GameState::CheckMate => (if current_colour == Colour::Black {"RIP Haskell XD"} else {"Rust lost? PANIC!"}).to_string()
+                        GameState::Check => "It's Check!!!".to_string(),
+                        GameState::CheckMate => (if current_colour == Colour::Black {"Farewell Haskell!"} else {"Rust lost? PANIC!"}).to_string()
                     }
                 
             )
@@ -225,6 +229,28 @@ impl event::EventHandler<GameError> for AppState {
                 )).expect("Failed to draw piece.");
         }
 
+        let background = graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::fill(),
+            graphics::Rect::new(5.0, 725.0, 710.0, 40.0),
+                                [0.2, 0.2, 0.2, 1.0].into())?;
+
+        graphics::draw(ctx, &background, graphics::DrawParam::default()).expect("Failed to draw background.");
+        for deaths_of_colour in self.deaths.iter() {
+            let mut index : f32 = 0.0;
+            for _piece in deaths_of_colour.1 {
+                graphics::draw(ctx, self.sprites.get(&_piece).unwrap(), graphics::DrawParam::default()
+                    .scale([0.4, 0.4])
+                    .dest(
+                        match deaths_of_colour.0 {
+                            Colour::White => [10.0 + 20.0 * index, 730.0],
+                            _ => [670.0 - (20.0 * index), 730.0]
+                        }
+                    ,
+                    )).expect("Failed to draw piece.");
+
+                index += 1.0;
+            }
+        }
+
         // render updated graphics
         graphics::present(ctx).expect("Failed to update graphics.");
 
@@ -246,7 +272,7 @@ impl event::EventHandler<GameError> for AppState {
                     if self.legal.contains(&square_clicked) && !self.previous_click.is_none() { // Previous click can be none at times when reseting previous clicks
 
                         // The piece currently moving or attacking
-                        let piece = self.game.board.get(&Position{file: self.previous_click.unwrap().0 + 1, rank: 8 - self.previous_click.unwrap().1});
+                        let piece = self.game.board.get(&to_engine_coords(&self.previous_click.unwrap()));
                         
                         // Get from and to coords as "<file><rank>" format
                         let from = num_to_filerank(&self.previous_click.unwrap());
@@ -266,11 +292,21 @@ impl event::EventHandler<GameError> for AppState {
                                 }
                             }
                             else { // If piece was no at the edge then just do a normal move and move on
+                                // Dead pieces are added to the death vector for display
+                                if let Some(_piece) = self.game.board.get(&to_engine_coords(&square_clicked)) {
+                                        self.deaths.get_mut(&!self.game.active_color).unwrap().push(*_piece);
+                                }
                                 self.game.make_move(from, to).ok();
                                 self.legal.clear();
                             }
                         }
                         else { // If it was no pawn that is the piece just make the move and clear the legal moves stored
+
+                            // Dead pieces are added to the death vector for display
+                            if let Some(_piece) = self.game.board.get(&to_engine_coords(&square_clicked)) {
+                                self.deaths.get_mut(&!self.game.active_color).unwrap().push(*_piece);
+                            }
+
                             self.game.make_move(from, to).ok();
                             self.legal.clear();
                         }
@@ -314,6 +350,10 @@ impl event::EventHandler<GameError> for AppState {
                         self.game.set_promotion("bishop".to_string()).ok();
                     }
 
+                    if let Some(_piece) = self.game.board.get(&to_engine_coords(&filerank_to_num(&self.pending_promotion_move._to.to_string()))) {
+                        self.deaths.get_mut(&!self.game.active_color).unwrap().push(*_piece);
+                    }
+
                     // (👌) Pending move occurs here
                     self.game.make_move(self.pending_promotion_move._from.to_string(), self.pending_promotion_move._to.to_string()).ok();
 
@@ -331,6 +371,8 @@ impl event::EventHandler<GameError> for AppState {
                 // Upon clicking the game resets
                 if self.game.get_game_state() == GameState::CheckMate { 
                     self.game = Game::new(); // New board
+                    self.deaths.get_mut(&Colour::Black).unwrap().clear();
+                    self.deaths.get_mut(&Colour::White).unwrap().clear();
 
                     // Reset game storages
                     self.legal.clear();
@@ -372,6 +414,11 @@ pub fn filerank_to_num(_filerank: &String) -> (u8, u8) {
     coords.1 = (56 - _filerank[1]) as u8; 
 
     coords
+}
+
+/// Takes a (u8,u8) coords used in the gui and converts them to coords used by the Chess Engine as the Position struct from the Engine
+pub fn to_engine_coords(_coords: &(u8, u8)) -> Position {
+    Position{file: _coords.0 + 1, rank: 8 - _coords.1}
 }
 
 pub fn main() -> GameResult {

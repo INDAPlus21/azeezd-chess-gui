@@ -4,4 +4,12 @@
 ## Chess Engine is provided by Elias Floreteng
 At: https://github.com/INDAPlus21/eliasfl-chess
 
-## Read README under resources to meet the new pieces
+## Notes 
+- Read README under resources to meet the new pieces
+
+## Known bugs
+- Opponent's pieces attacking own pieces on own turn adds piece to Deaths Bar.
+
+## To be added
+- Split main into multiple files
+- Fix bugs under *Known Bugs*
