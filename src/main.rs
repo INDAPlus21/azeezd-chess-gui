@@ -4,24 +4,17 @@
  * Last updated: 2021-10-03
  */
 
+pub mod graphics_funcs;
+pub mod consts;
+pub mod help_funcs;
+
 use ggez::{conf, event, graphics, ContextBuilder, Context, GameError, GameResult};
 use std::{path, env, collections::HashMap};
-use eliasfl_chess::{Game, Color as Colour, Piece as PieceType, GameState, Position};
+use eliasfl_chess::{Game, Color as Colour, Piece, GameState};
+use graphics_funcs::*;
+use consts::*;
+use help_funcs::*;
 
-/// A chess board is 8x8 tiles.
-const GRID_SIZE: i16 = 8;
-/// Sutible size of each tile.
-const GRID_CELL_SIZE: (i16, i16) = (90, 90);
-
-/// Size of the application window.
-const SCREEN_SIZE: (f32, f32) = (
-    GRID_SIZE as f32 * GRID_CELL_SIZE.0 as f32,
-    GRID_SIZE as f32 * GRID_CELL_SIZE.1 as f32 + 150.0,
-);
-
-// GUI Color representations
-const BLACK: graphics::Color = graphics::Color::new(30.0/255.0, 30.0/255.0, 30.0/255.0, 1.0);
-const WHITE: graphics::Color = graphics::Color::new(70.0/255.0, 70.0/255.0, 70.0/255.0, 1.0);
 
 // Moves to be made after a promotion
 struct PendingMove {
@@ -30,14 +23,14 @@ struct PendingMove {
 }
 
 /// GUI logic and event implementation structure. 
-struct AppState {
-    sprites: HashMap<PieceType, graphics::Image>,
+pub struct AppState {
+    sprites: HashMap<Piece, graphics::Image>,
     game: Game,
     legal: Vec<(u8, u8)>, // When clicking on a piece, it saves the legal moves in this vec to display the indicators on the board
     previous_click: Option<(u8, u8)>, // The previous square clicked by the player
     promoting: bool, // If the player is currently promoting a piece (makes a small window pop up for the player to choose)
     pending_promotion_move: PendingMove,
-    deaths: HashMap<Colour, Vec<PieceType>>
+    deaths: HashMap<Colour, Vec<Piece>>
 }
 
 impl AppState {
@@ -60,27 +53,27 @@ impl AppState {
     }
 
     /// Loads chess piese images into vector.
-    fn load_sprites(ctx: &mut Context) -> HashMap<PieceType, graphics::Image> {
+    fn load_sprites(ctx: &mut Context) -> HashMap<Piece, graphics::Image> {
 
         [
-            ((PieceType::King(Colour::Black)), "/black_king.png".to_string()),
-            ((PieceType::Queen(Colour::Black)), "/black_queen.png".to_string()),
-            ((PieceType::Rook(Colour::Black)), "/black_rook.png".to_string()),
-            ((PieceType::Pawn(Colour::Black)), "/black_pawn.png".to_string()),
-            ((PieceType::Bishop(Colour::Black)), "/black_bishop.png".to_string()),
-            ((PieceType::Knight(Colour::Black)), "/black_knight.png".to_string()),
-            ((PieceType::King(Colour::White)), "/white_king.png".to_string()),
-            ((PieceType::Queen(Colour::White)), "/white_queen.png".to_string()),
-            ((PieceType::Rook(Colour::White)), "/white_rook.png".to_string()),
-            ((PieceType::Pawn(Colour::White)), "/white_pawn.png".to_string()),
-            ((PieceType::Bishop(Colour::White)), "/white_bishop.png".to_string()),
-            ((PieceType::Knight(Colour::White)), "/white_knight.png".to_string())
+            ((Piece::King(Colour::Black)), "/black_king.png".to_string()),
+            ((Piece::Queen(Colour::Black)), "/black_queen.png".to_string()),
+            ((Piece::Rook(Colour::Black)), "/black_rook.png".to_string()),
+            ((Piece::Pawn(Colour::Black)), "/black_pawn.png".to_string()),
+            ((Piece::Bishop(Colour::Black)), "/black_bishop.png".to_string()),
+            ((Piece::Knight(Colour::Black)), "/black_knight.png".to_string()),
+            ((Piece::King(Colour::White)), "/white_king.png".to_string()),
+            ((Piece::Queen(Colour::White)), "/white_queen.png".to_string()),
+            ((Piece::Rook(Colour::White)), "/white_rook.png".to_string()),
+            ((Piece::Pawn(Colour::White)), "/white_pawn.png".to_string()),
+            ((Piece::Bishop(Colour::White)), "/white_bishop.png".to_string()),
+            ((Piece::Knight(Colour::White)), "/white_knight.png".to_string())
         ]
             .iter()
             .map(|(_piece, _path)| {
                 (*_piece, graphics::Image::new(ctx, _path).unwrap())
             })
-            .collect::<HashMap<PieceType, graphics::Image>>()
+            .collect::<HashMap<Piece, graphics::Image>>()
     }
 }
 
@@ -101,154 +94,68 @@ impl event::EventHandler<GameError> for AppState {
             _ => [0.97, 0.3, 0.0, 1.0]
         }).into());
 
-        // create text representation
-        let state_text = graphics::Text::new(
-                graphics::TextFragment::from(
-                    match self.game.get_game_state() {
-                        GameState::InProgress => format!("{}'s turn!", if current_colour == Colour::Black {"Haskeller"} else {"Rustacean"}),
-                        GameState::Check => "It's Check!!!".to_string(),
-                        GameState::CheckMate => (if current_colour == Colour::Black {"Farewell Haskell!"} else {"Rust lost? PANIC!"}).to_string()
-                    }
-                
-            )
-            .scale(graphics::PxScale { x: 30.0, y: 30.0 }));
-
-        // get size of text
-        let text_dimensions = state_text.dimensions(ctx);
-        // create background rectangle with white coulouring
-        let background_box = graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::fill(),
-            graphics::Rect::new((SCREEN_SIZE.0 - text_dimensions.w as f32) / 2f32 as f32 - 8.0,
-                                (SCREEN_SIZE.0 - text_dimensions.h as f32) / 2f32 as f32,
-                                text_dimensions.w as f32 + 16.0, text_dimensions.h as f32),
-                                [1.0, 1.0, 1.0, 1.0].into()
-        )?;
-
-        // draw background
-        graphics::draw(ctx, &background_box, graphics::DrawParam::default()).expect("Failed to draw background.");
-
         // draw grid
         for _row in 0..8 {
             for _col in 0..8 {
 
                 // draw tile
-                let rectangle = graphics::Mesh::new_rectangle(ctx, 
-                    graphics::DrawMode::fill(), 
-                    graphics::Rect::new_i32(
-                        _col * GRID_CELL_SIZE.0 as i32,
-                        _row * GRID_CELL_SIZE.1 as i32,
-                        GRID_CELL_SIZE.0 as i32,
-                        GRID_CELL_SIZE.1 as i32,
-                    ), match _col % 2 {
-                        0 => 
-                            if _row % 2 == 0 { WHITE } 
-                            else { BLACK },
-                        _ => 
-                            if _row % 2 == 0 { BLACK } 
-                            else { WHITE },
-                    }).expect("Failed to create tile.");
-                graphics::draw(ctx, &rectangle, graphics::DrawParam::default()).expect("Failed to draw tiles.");
+                draw_funcs::draw_tile(ctx, _row, _col);
 
                 // draw piece
-                if let Some(_piece) = self.game.board.get(&Position{rank: (8 - _row) as u8, file: (_col + 1) as u8}) {
-                    graphics::draw(ctx, self.sprites.get(&_piece).unwrap(), graphics::DrawParam::default()
-                        .dest(
-                            [_col as f32 * GRID_CELL_SIZE.0 as f32, _row as f32 * GRID_CELL_SIZE.1 as f32],
-                        )
-                    ).expect("Failed to draw piece.");
-                }
+                draw_funcs::draw_piece(ctx, &self, _row, _col);
 
                 // Draw an indicator (white circle) on legal moves for the piece clicked
-                if self.legal.contains(&(_col as u8, _row as u8)) {
-                    let circle = graphics::Mesh::new_circle(ctx, 
-                        graphics::DrawMode::fill(), ggez::mint::Point2{
-                        x: (_col as i16 * GRID_CELL_SIZE.0 + GRID_CELL_SIZE.0 / 2) as f32,
-                        y: (_row as i16 * GRID_CELL_SIZE.1 + GRID_CELL_SIZE.1 / 2) as f32
-                    }, 25.0, 1.0, graphics::Color::new(0.6, 1.0, 0.6, 0.5)).unwrap();
-                    
-                    graphics::draw(ctx,
-                        &circle,
-                        graphics::DrawParam::default()).expect("Failed to draw legal move indictator");
-                }
+                draw_funcs::draw_legal_indicator(ctx, &self, _row, _col);
             }
         }
 
         // If the player is not promoting at the moment. Display the the turn and the state of the game
         if !self.promoting {
-            // draw text with dark gray colouring and center position
-            graphics::draw(ctx, &state_text, graphics::DrawParam::default().color([0.0, 0.0, 0.0, 1.0].into())
-                .dest(ggez::mint::Point2 {
-                    x: (SCREEN_SIZE.0 - text_dimensions.w as f32) / 2f32 as f32,
-                    y: (SCREEN_SIZE.0 - text_dimensions.h as f32) / 2f32 as f32 + 440.0,
-                })).expect("Failed to draw text.");
+            // create text representation
+            let state_text = graphics_funcs::draw_funcs::prepare_text(&mut self.game, &current_colour);
+            draw_funcs::draw_text(ctx, &state_text, (0.0, 440.0));
 
             if self.game.get_game_state() == GameState::CheckMate {
                 let replay_text = graphics::Text::new(
                     graphics::TextFragment::from("Click in this area to replay!")
                 .scale(graphics::PxScale { x: 20.0, y: 20.0 }));
                 
-                let replay_dimensions = replay_text.dimensions(ctx);
-
-                graphics::draw(ctx, &replay_text, graphics::DrawParam::default().color([0.0, 0.0, 0.0, 1.0].into())
-                    .dest(ggez::mint::Point2 {
-                        x: (SCREEN_SIZE.0 - replay_dimensions.w as f32) / 2f32 as f32,
-                        y: (SCREEN_SIZE.0 - replay_dimensions.h as f32) / 2f32 as f32 + 480.0,
-                    })).expect("Failed to draw text.");
+                draw_funcs::draw_text(ctx, &replay_text, (0.0, 480.0));
             }
+
+        draw_funcs::draw_rectangle(ctx, (5.0, 725.0, 710.0, 40.0));
+        
+        for deaths_of_colour in self.deaths.iter() {
+            let mut index : f32 = 0.0;
+            for _piece in deaths_of_colour.1 {
+
+                let position = match deaths_of_colour.0 {
+                    Colour::White => (10.0 + 20.0 * index, 730.0),
+                    _ => (670.0 - (20.0 * index), 730.0)
+                };
+
+                draw_funcs::draw_icon(ctx, &self, position, &_piece, 0.4);
+                index += 1.0;
+            }
+        }
         }
         else { // Player is promoting
 
             // Draw a grey rectangle where the choices for promotion will be
-            let background = graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::fill(),
-            graphics::Rect::new(20.0, 740.0, 680.0, 110.0),
-                                [0.2, 0.2, 0.2, 1.0].into())?;
-
-            graphics::draw(ctx, &background, graphics::DrawParam::default()).expect("Failed to draw background.");
+            draw_funcs::draw_rectangle(ctx, (20.0, 740.0, 680.0, 110.0));
 
             // Draw Queen Icon
-            graphics::draw(ctx, self.sprites.get(&PieceType::Queen(current_colour)).unwrap(), graphics::DrawParam::default()
-                .dest(
-                    [50.0, 750.0],
-                )).expect("Failed to draw piece.");
+            draw_funcs::draw_icon(ctx, &self, (50.0, 750.0), &Piece::Queen(current_colour), 1.0);
 
             // Draw Knight icon
-            graphics::draw(ctx, self.sprites.get(&PieceType::Knight(current_colour)).unwrap(), graphics::DrawParam::default()
-                .dest(
-                    [230.0, 750.0],
-                )).expect("Failed to draw piece.");
+            draw_funcs::draw_icon(ctx, &self, (230.0, 750.0), &Piece::Knight(current_colour), 1.0);
 
             // Draw Rook Icon
-            graphics::draw(ctx, self.sprites.get(&PieceType::Rook(current_colour)).unwrap(), graphics::DrawParam::default()
-                .dest(
-                    [410.0, 750.0],
-                )).expect("Failed to draw piece.");
+            draw_funcs::draw_icon(ctx, &self, (410.0, 750.0), &Piece::Rook(current_colour), 1.0);
 
             // Draw Bishop Icon
-            graphics::draw(ctx, self.sprites.get(&PieceType::Bishop(current_colour)).unwrap(), graphics::DrawParam::default()
-                .dest(
-                    [590.0, 750.0],
-                )).expect("Failed to draw piece.");
-        }
-
-        let background = graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::fill(),
-            graphics::Rect::new(5.0, 725.0, 710.0, 40.0),
-                                [0.2, 0.2, 0.2, 1.0].into())?;
-
-        graphics::draw(ctx, &background, graphics::DrawParam::default()).expect("Failed to draw background.");
-        for deaths_of_colour in self.deaths.iter() {
-            let mut index : f32 = 0.0;
-            for _piece in deaths_of_colour.1 {
-                graphics::draw(ctx, self.sprites.get(&_piece).unwrap(), graphics::DrawParam::default()
-                    .scale([0.4, 0.4])
-                    .dest(
-                        match deaths_of_colour.0 {
-                            Colour::White => [10.0 + 20.0 * index, 730.0],
-                            _ => [670.0 - (20.0 * index), 730.0]
-                        }
-                    ,
-                    )).expect("Failed to draw piece.");
-
-                index += 1.0;
-            }
+            draw_funcs::draw_icon(ctx, &self, (590.0, 750.0), &Piece::Bishop(current_colour), 1.0);
+                
         }
 
         // render updated graphics
@@ -279,7 +186,7 @@ impl event::EventHandler<GameError> for AppState {
                         let to = num_to_filerank(&square_clicked);
 
                         // If the piece is a pawn then check if it reached the edges for promotion
-                        if let PieceType::Pawn(_colour) = piece.unwrap() {
+                        if let Piece::Pawn(_colour) = piece.unwrap() {
                             if (*_colour == Colour::Black && square_clicked.1 == 7) // Black reached bottom of board
                             || (*_colour == Colour::White && square_clicked.1 == 0) { // White reached top of board
                                 self.promoting = true; // It's promoting time
@@ -292,23 +199,13 @@ impl event::EventHandler<GameError> for AppState {
                                 }
                             }
                             else { // If piece was no at the edge then just do a normal move and move on
-                                // Dead pieces are added to the death vector for display
-                                if let Some(_piece) = self.game.board.get(&to_engine_coords(&square_clicked)) {
-                                        self.deaths.get_mut(&!self.game.active_color).unwrap().push(*_piece);
-                                }
-                                self.game.make_move(from, to).ok();
-                                self.legal.clear();
+                                self.make_move_full(square_clicked, from, to);
                             }
                         }
                         else { // If it was no pawn that is the piece just make the move and clear the legal moves stored
 
                             // Dead pieces are added to the death vector for display
-                            if let Some(_piece) = self.game.board.get(&to_engine_coords(&square_clicked)) {
-                                self.deaths.get_mut(&!self.game.active_color).unwrap().push(*_piece);
-                            }
-
-                            self.game.make_move(from, to).ok();
-                            self.legal.clear();
+                            self.make_move_full(square_clicked, from, to);
                         }
                     }
                     else { // If move is not legal
@@ -357,68 +254,32 @@ impl event::EventHandler<GameError> for AppState {
                     // (👌) Pending move occurs here
                     self.game.make_move(self.pending_promotion_move._from.to_string(), self.pending_promotion_move._to.to_string()).ok();
 
-                    // No longer promoting
-                    self.promoting = false;
-
                     // Clear the struct of legal moves that hold the legal moves of the piece
                     self.legal.clear();
 
                     // Reset Pending Move struct
                     self.pending_promotion_move = PendingMove{_from: "".to_string(), _to: "".to_string()};
+
+                    // No longer promoting
+                    self.promoting = false;
                 }
 
                 // Checkmate makes the area under the board clickable
                 // Upon clicking the game resets
                 if self.game.get_game_state() == GameState::CheckMate { 
                     self.game = Game::new(); // New board
-                    self.deaths.get_mut(&Colour::Black).unwrap().clear();
-                    self.deaths.get_mut(&Colour::White).unwrap().clear();
 
                     // Reset game storages
                     self.legal.clear();
                     self.previous_click = None;
                     self.promoting = false;
                     self.pending_promotion_move = PendingMove{_from: "".to_string(), _to: "".to_string()};
+                    self.deaths.get_mut(&Colour::Black).unwrap().clear();
+                    self.deaths.get_mut(&Colour::White).unwrap().clear();
                 }
             }
         }
     }
-}
-
-// The two functions below are the same as the ones used in my Engine assignment. They serve their purpose there so I copied them over here to do likewise.
-
-/// Converts a (u8, u8) to String in the form "\<file\>\<rank\>"
-pub fn num_to_filerank(_coords: &(u8, u8)) -> String {
-    let mut string_coords = String::with_capacity(2);
-
-    string_coords.push((_coords.0 as u8 + 97) as char);
-    string_coords.push((56 - _coords.1 as u8) as char);
-
-    string_coords
-}
-
-/// Converts a String from "\<file\>\<rank\>" to a coord in the form of (u8, u8)
-pub fn filerank_to_num(_filerank: &String) -> (u8, u8) {
-    let mut coords = (0,0);
-    
-    let _filerank = _filerank.as_bytes();
-
-    // The rank represnts the y-axis thus it is the 1st coordinate
-    // And the file the x-axes hence the 0th coordinate
-    coords.0 = (_filerank[0] - 97) as u8; // Lowercase alphabet to u8 using ascii value different between letter and numerical value that is 1-indexed
-
-    /* Convert number as ascii char to actual numerical value by doing minus 49 (ascii difference) but the the board's origin is at bottom left
-        So the x coordinate must shift by 7 - (top left origin coord) thus
-        7 - ([ascii val] - 49) gives 56 - [ascii val]
-    */
-    coords.1 = (56 - _filerank[1]) as u8; 
-
-    coords
-}
-
-/// Takes a (u8,u8) coords used in the gui and converts them to coords used by the Chess Engine as the Position struct from the Engine
-pub fn to_engine_coords(_coords: &(u8, u8)) -> Position {
-    Position{file: _coords.0 + 1, rank: 8 - _coords.1}
 }
 
 pub fn main() -> GameResult {
